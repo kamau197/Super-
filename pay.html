@@ -1,70 +1,102 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Pay Milestone</title>
-  <script src="https://js.paystack.co/v1/inline.js"></script>
-  <style>
-    body { font-family: Arial; padding: 30px; }
-    input, button { display:block; margin:10px 0; padding:8px; width:250px; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pay Milestone</title>
+<style>
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  display: flex;
+}
+
+/* Sidebar */
+.sidebar {
+  width: 200px;
+  background: #333;
+  color: #fff;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding-top: 20px;
+}
+.sidebar a {
+  color: #fff;
+  padding: 15px 20px;
+  text-decoration: none;
+  display: block;
+}
+.sidebar a:hover {
+  background: #444;
+}
+
+/* Main content */
+.main {
+  flex: 1;
+  padding: 20px;
+}
+input, button {
+  padding: 10px;
+  margin: 5px 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+button {
+  cursor: pointer;
+}
+</style>
 </head>
 <body>
 
-<h3>Pay Milestone</h3>
+<div class="sidebar">
+  <a href="/">Pay</a>
+  <a href="/history">History</a>
+</div>
 
-<input type="email" id="email" value="client@test.com">
-<input type="number" id="amount" value="5000">
-<input type="text" id="contract_id" value="CONTRACT_001">
-<input type="text" id="milestone_id" value="MILESTONE_001">
+<div class="main">
+  <h1>Pay Milestone</h1>
+  <form id="payForm">
+    <input type="email" id="email" placeholder="Email" required />
+    <input type="number" id="amount" placeholder="Amount (KES)" required />
+    <input type="text" id="contract_id" placeholder="Contract ID" required />
+    <input type="text" id="milestone_id" placeholder="Milestone ID" required />
+    <input type="text" id="reference" placeholder="Paystack Reference" required />
+    <button type="submit">Verify & Save Payment</button>
+  </form>
 
-<button onclick="payNow()">Pay Now</button>
-
-<script src="https://js.paystack.co/v1/inline.js"></script>
+  <div id="message"></div>
+</div>
 
 <script>
-function payNow() {
+const form = document.getElementById("payForm");
+const msg = document.getElementById("message");
 
-    let handler = PaystackPop.setup({
-        key: "pk_test_ecd2ebaf58c6a6683c1f0279b9d7788314bcd7f7", 
-        email: document.getElementById("email").value,
-        amount: document.getElementById("amount").value * 100,
-        currency: "KES",
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
 
-        callback: function(response) {
+  const payload = {
+    email: document.getElementById("email").value,
+    amount: document.getElementById("amount").value,
+    contract_id: document.getElementById("contract_id").value,
+    milestone: document.getElementById("milestone").value,
+    reference: document.getElementById("reference").value
+  };
 
-            // 🔥 THIS IS THE IMPORTANT PART
-            fetch("https://super-oa8t.onrender.com/verify-payment", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    reference: response.reference,
-                    email: document.getElementById("email").value,
-                    amount: document.getElementById("amount").value,
-                    contract_id: document.getElementById("contract").value,
-                    milestone: document.getElementById("milestone").value
-                })
-            })
-            .then(res => res.json())
-            .then(data => {
-                console.log(data);
-                alert("Saved to DB");
-            })
-            .catch(err => {
-                console.error(err);
-                alert("Failed to save");
-            });
-
-        },
-
-        onClose: function() {
-            alert("Transaction cancelled");
-        }
+  try {
+    const res = await fetch("/verify-payment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
     });
-
-    handler.openIframe();
-}
+    const data = await res.json();
+    if (data.success) msg.innerHTML = "✅ Payment verified and saved!";
+    else msg.innerHTML = "❌ " + data.error;
+  } catch (err) {
+    msg.innerHTML = "❌ Server error";
+    console.error(err);
+  }
+});
 </script>
 
 </body>
