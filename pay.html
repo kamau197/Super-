@@ -1,102 +1,88 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pay Milestone</title>
-<style>
-body {
-  margin: 0;
-  font-family: Arial, sans-serif;
-  display: flex;
-}
-
-/* Sidebar */
-.sidebar {
-  width: 200px;
-  background: #333;
-  color: #fff;
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  padding-top: 20px;
-}
-.sidebar a {
-  color: #fff;
-  padding: 15px 20px;
-  text-decoration: none;
-  display: block;
-}
-.sidebar a:hover {
-  background: #444;
-}
-
-/* Main content */
-.main {
-  flex: 1;
-  padding: 20px;
-}
-input, button {
-  padding: 10px;
-  margin: 5px 0;
-  width: 100%;
-  box-sizing: border-box;
-}
-button {
-  cursor: pointer;
-}
-</style>
+  <title>Pay Milestone</title>
+  <script src="https://js.paystack.co/v1/inline.js"></script>
+  <style>
+    body { font-family: Arial; margin:0; display:flex; }
+    /* Sidebar */
+    .sidebar {
+      width: 200px;
+      background: #0ba4db;
+      color: white;
+      height: 100vh;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    .sidebar a {
+      color: white;
+      display:block;
+      margin:10px 0;
+      text-decoration:none;
+    }
+    .content {
+      flex:1;
+      padding:30px;
+    }
+    input, button { display:block; margin:10px 0; padding:8px; width:250px; }
+  </style>
 </head>
 <body>
 
 <div class="sidebar">
-  <a href="/pay.html">Pay</a>
-  <a href="/history.html">History</a>
+  <h3>Menu</h3>
+  <a href="pay.html">Pay Milestone</a>
+  <a href="history.html">Payment History</a>
 </div>
 
-<div class="main">
-  <h1>Pay Milestone</h1>
-  <form id="payForm">
-    <input type="email" id="email" placeholder="Email" required />
-    <input type="number" id="amount" placeholder="Amount (KES)" required />
-    <input type="text" id="contract_id" placeholder="Contract ID" required />
-    <input type="text" id="milestone_id" placeholder="Milestone ID" required />
-    <input type="text" id="reference" placeholder="Paystack Reference" required />
-    <button type="submit">Verify & Save Payment</button>
-  </form>
+<div class="content">
+  <h3>Pay Milestone</h3>
 
-  <div id="message"></div>
+  <input type="email" id="email" value="client@test.com" placeholder="Email">
+  <input type="number" id="amount" value="5000" placeholder="Amount">
+  <input type="text" id="contract_id" value="CONTRACT_001" placeholder="Contract ID">
+  <input type="text" id="milestone_id" value="MILESTONE_001" placeholder="Milestone ID">
+
+  <button onclick="payNow()">Pay Now</button>
 </div>
 
 <script>
-const form = document.getElementById("payForm");
-const msg = document.getElementById("message");
+async function payNow() {
+  const email = document.getElementById("email").value;
+  const amount = document.getElementById("amount").value;
+  const contract_id = document.getElementById("contract_id").value;
+  const milestone = document.getElementById("milestone_id").value;
 
-form.addEventListener("submit", async (e) => {
-  e.preventDefault();
+  let handler = PaystackPop.setup({
+    key: "YOUR_PAYSTACK_PUBLIC_KEY",
+    email,
+    amount: amount * 100,
+    currency: "KES",
+    ref: "REF_" + Date.now(),
+    metadata: { contract_id, milestone },
+    callback: async function(response) {
+      alert("Payment completed. Reference: " + response.reference);
 
-  const payload = {
-    email: document.getElementById("email").value,
-    amount: document.getElementById("amount").value,
-    contract_id: document.getElementById("contract_id").value,
-    milestone: document.getElementById("milestone").value,
-    reference: document.getElementById("reference").value
-  };
-
-  try {
-    const res = await fetch("/verify-payment", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    const data = await res.json();
-    if (data.success) msg.innerHTML = "✅ Payment verified and saved!";
-    else msg.innerHTML = "❌ " + data.error;
-  } catch (err) {
-    msg.innerHTML = "❌ Server error";
-    console.error(err);
-  }
-});
+      // Send verification to server
+      const res = await fetch('/verify-payment', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          reference: response.reference,
+          email,
+          amount,
+          contract_id,
+          milestone,
+          supremeId: "FINAL_PROJECT_001"
+        })
+      });
+      const data = await res.json();
+      if(data.success) alert("Payment saved successfully!");
+      else alert("Error saving payment: " + data.error);
+    }
+  });
+  handler.openIframe();
+}
 </script>
 
 </body>
