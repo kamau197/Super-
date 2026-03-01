@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
 const { createClient } = require("@supabase/supabase-js");
+const path = require("path");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -9,18 +10,24 @@ const PORT = process.env.PORT || 3000;
 /* =========================
    MIDDLEWARE
 ========================= */
-
 app.use(cors());
 app.use(express.json());
+app.use(express.static(path.join(__dirname, "client"))); // <- serve static files
 
 /* =========================
    SUPABASE CLIENT
 ========================= */
-
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
+
+/* =========================
+   ROUTES
+========================= */
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "client", "pay.html"));
+});
 
 /* =========================
    HEALTH CHECK
