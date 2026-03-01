@@ -8,11 +8,21 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 /* =========================
+   SUPREME IDENTIFIER
+========================= */
+const SUPREME_ID = process.env.SUPREME_ID || "FINAL_PROJECT_001";
+
+/* =========================
    MIDDLEWARE
 ========================= */
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+/* =========================
+   SERVE ALL HTML FILES IN ROOT
+========================= */
+app.use(express.static(__dirname));
 
 /* =========================
    SUPABASE CLIENT
@@ -27,52 +37,54 @@ const supabase = createClient(
 ========================= */
 app.get("/health", (req, res) => {
   console.log("Health check OK");
-  res.send("Server running with Supabase ✅");
+  res.send(`Server running with Supabase ✅ | SUPREME_ID: ${SUPREME_ID}`);
 });
 
 /* =========================
-   SERVE history.html
+   PULL PAYSTACK HISTORY TO SUPABASE
 ========================= */
-app.get("/history", (req, res) => {
-  console.log("Serving history.html");
-  res.sendFile(path.join(__dirname, "history.html"));
-});
-
-/* =========================
-   FETCH PAYSTACK HISTORY
-========================= */
-app.get("/fetch-paystack", async (req, res) => {
+app.post("/fetch-paystack-history", async (req, res) => {
   try {
+    // You can optionally verify the supreme ID sent by client
+    const { supremeId } = req.body;
+    if (supremeId !== SUPREME_ID) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+
     console.log("Fetching Paystack transaction history...");
 
-    // 1️⃣ Get transactions from Paystack
-    const response = await axios.get("https://api.paystack.co/transaction", {
-      headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` }
+    const history = await axios.get("https://api.paystack.co/transaction", {
+      headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` },
+      params: { perPage: 50 } // fetch last 50 transactions
     });
 
-    const transactions = response.data.data; // array of transactions
-    console.log(`Fetched ${transactions.length} transactions`);
+    const transactions = history.data.data;
 
-    // 2️⃣ Insert each transaction into Supabase
     for (const trx of transactions) {
-      const { reference, customer, amount, currency, status, metadata, id: paystack_id } = trx;
-
-      const { data, error } = await supabase
+      const reference_id = trx.id.toString(); // Paystack's unique transaction ID
+      const existing = await supabase
         .from("paystack")
-        .upsert([{
-          reference,
-          reference_id: paystack_id,
-          email: customer?.email || null,
-          amount,
-          currency,
-          status,
-          contract_id: metadata?.contract_id || null,
-          milestone_id: metadata?.milestone || null,
-          raw_event: trx
-        }], { onConflict: ["reference_id"] }); // avoid duplicates
+        .select("*")
+        .eq("reference_id", reference_id);
 
-      if (error) console.error("Supabase insert error:", error);
-      else console.log("Inserted transaction:", reference);
+      if (existing.data.length === 0) {
+        // Insert new transaction into Supabase
+        await supabase.from("paystack").insert([
+          {
+            reference: trx.reference,
+            reference_id,
+            email: trx.customer.email,
+            amount: trx.amount / 100, // convert kobo to NGN/KES
+            contract_id: trx.metadata?.contract_id || null,
+            milestone_id: trx.metadata?.milestone || null,
+            currency: trx.currency,
+            status: trx.status,
+            raw_event: trx,
+            created_at: trx.paid_at
+          }
+        ]);
+        console.log("Inserted trx:", reference_id);
+      }
     }
 
     res.json({ success: true, count: transactions.length });
@@ -83,9 +95,9 @@ app.get("/fetch-paystack", async (req, res) => {
 });
 
 /* =========================
-   GET ALL PAYMENTS (for history.html)
+   GET HISTORY FOR FRONTEND
 ========================= */
-app.get("/payments", async (req, res) => {
+app.get("/get-history", async (req, res) => {
   try {
     const { data, error } = await supabase
       .from("paystack")
@@ -93,13 +105,12 @@ app.get("/payments", async (req, res) => {
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.error("Supabase fetch error:", error);
       return res.status(500).json({ error: error.message });
     }
 
     res.json(data);
   } catch (err) {
-    console.error("Server error:", err.message);
+    console.error("Error fetching history:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -108,5 +119,5 @@ app.get("/payments", async (req, res) => {
    START SERVER
 ========================= */
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Server running on port ${PORT} | SUPREME_ID: ${SUPREME_ID}`);
 });
