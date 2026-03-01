@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Payment History</title>
+  <style>
+    body { font-family: Arial; padding: 30px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 8px; }
+    th { background: #0ba4db; color: white; }
+  </style>
+</head>
+<body>
+
+<h3>Payment History (Audit)</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Reference</th>
+      <th>Contract</th>
+      <th>Milestone</th>
+      <th>Amount</th>
+      <th>Status</th>
+      <th>Date</th>
+    </tr>
+  </thead>
+  <tbody id="tableBody"></tbody>
+</table>
+
+<script>
+async function loadPayments() {
+  const res = await fetch('/payments');
+  const data = await res.json();
+
+  const body = document.getElementById("tableBody");
+  body.innerHTML = "";
+
+  data.forEach(p => {
+    body.innerHTML += `
+      <tr>
+        <td>${p.reference}</td>
+        <td>${p.contract_id || ''}</td>
+        <td>${p.milestone_id || ''}</td>
+        <td>${p.currency} ${p.amount}</td>
+        <td>${p.status}</td>
+        <td>${new Date(p.created_at).toLocaleString()}</td>
+      </tr>
+    `;
+  });
+}
+
+loadPayments();
+</script>
+
+</body>
+</html>

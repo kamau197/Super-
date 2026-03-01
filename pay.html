@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Pay Milestone</title>
+  <script src="https://js.paystack.co/v1/inline.js"></script>
+  <style>
+    body { font-family: Arial; padding: 30px; }
+    input, button { display:block; margin:10px 0; padding:8px; width:250px; }
+  </style>
+</head>
+<body>
+
+<h3>Pay Milestone</h3>
+
+<input type="email" id="email" value="client@test.com">
+<input type="number" id="amount" value="5000">
+<input type="text" id="contract_id" value="CONTRACT_001">
+<input type="text" id="milestone_id" value="MILESTONE_001">
+
+<button onclick="payNow()">Pay Now</button>
+
+<script>
+function payNow() {
+  let handler = PaystackPop.setup({
+    key: "YOUR_PAYSTACK_PUBLIC_KEY",
+    email: document.getElementById("email").value,
+    amount: document.getElementById("amount").value * 100,
+    currency: "KES",
+    ref: "REF_" + Date.now(),
+    metadata: {
+      contract_id: document.getElementById("contract_id").value,
+      milestone_id: document.getElementById("milestone_id").value
+    },
+    callback: function(response) {
+      alert("Payment initiated. Reference: " + response.reference);
+    }
+  });
+  handler.openIframe();
+}
+</script>
+
+</body>
+</html>
