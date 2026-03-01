@@ -1,66 +1,104 @@
-require('dotenv').config();
-const express = require('express');
-const crypto = require('crypto');
-const { createClient } = require('@supabase/supabase-js');
+const express = require("express");
+const cors = require("cors");
+const axios = require("axios");
+const { createClient } = require("@supabase/supabase-js");
 
 const app = express();
+const PORT = process.env.PORT || 3000;
+
+/* =========================
+   MIDDLEWARE
+========================= */
+
+app.use(cors());
 app.use(express.json());
-app.use(express.static(__dirname));
+
+/* =========================
+   SUPABASE CLIENT
+========================= */
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-/* ===============================
-   PAYSTACK WEBHOOK
-================================= */
-app.post('/webhook', async (req, res) => {
+/* =========================
+   HEALTH CHECK
+========================= */
 
-  const hash = crypto
-    .createHmac('sha512', process.env.PAYSTACK_SECRET_KEY)
-    .update(JSON.stringify(req.body))
-    .digest('hex');
-
-  if (hash !== req.headers['x-paystack-signature']) {
-    return res.status(401).send('Invalid signature');
-  }
-
-  const event = req.body;
-
-  if (event.event === "charge.success") {
-
-    const data = event.data;
-
-    await supabase.from('paystack').insert({
-      reference: data.reference,
-      contract_id: data.metadata?.contract_id,
-      milestone_id: data.metadata?.milestone_id,
-      email: data.customer.email,
-      amount: data.amount / 100,
-      currency: data.currency,
-      status: data.status,
-      raw_event: event
-    });
-
-  }
-
-  res.sendStatus(200);
+app.get("/", (req, res) => {
+  res.send("Server running with Supabase 🚀");
 });
 
-/* ===============================
-   GET PAYMENT HISTORY
-================================= */
-app.get('/payments', async (req, res) => {
+/* =========================
+   VERIFY PAYMENT + SAVE
+========================= */
 
-  const { data } = await supabase
-    .from('paystack')
-    .select('*')
-    .order('created_at', { ascending: false });
+app.post("/verify-payment", async (req, res) => {
+  try {
+    console.log("Incoming payment:", req.body);
 
-  res.json(data);
+    const {
+      reference,
+      email,
+      amount,
+      contract_id,
+      milestone
+    } = req.body;
+
+    if (!reference) {
+      return res.status(400).json({ error: "No reference provided" });
+    }
+
+    /* 🔥 VERIFY WITH PAYSTACK */
+    const verify = await axios.get(
+      `https://api.paystack.co/transaction/verify/${reference}`,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`
+        }
+      }
+    );
+
+    const paymentData = verify.data.data;
+
+    if (paymentData.status !== "success") {
+      return res.status(400).json({ error: "Payment not successful" });
+    }
+
+    /* 🔥 INSERT INTO SUPABASE TABLE 'paystack' */
+    const { data, error } = await supabase
+      .from("paystack")
+      .insert([
+        {
+          reference: reference,
+          email: email,
+          amount: amount,
+          contract_id: contract_id,
+          milestone: milestone,
+          state: "completed"
+        }
+      ]);
+
+    if (error) {
+      console.error("Supabase insert error:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log("Payment saved to Supabase ✅");
+
+    res.json({ success: true });
+
+  } catch (error) {
+    console.error("Server error:", error.message);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
-app.listen(process.env.PORT || 3000, () =>
-  console.log("Server running")
-);
+/* =========================
+   START SERVER
+========================= */
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
