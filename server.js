@@ -7,118 +7,106 @@ const path = require("path");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// =========================
-// MIDDLEWARE
-// =========================
+/* =========================
+   MIDDLEWARE
+========================= */
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// =========================
-// SUPABASE CLIENT
-// =========================
+/* =========================
+   SUPABASE CLIENT
+========================= */
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// =========================
-// HEALTH CHECK
-// =========================
+/* =========================
+   HEALTH CHECK
+========================= */
 app.get("/health", (req, res) => {
   console.log("Health check OK");
   res.send("Server running with Supabase ✅");
 });
 
-// =========================
-// SERVE pay.html AND history.html
-// =========================
-app.get("/", (req, res) => res.sendFile(path.join(__dirname, "pay.html")));
-app.get("/history", (req, res) => res.sendFile(path.join(__dirname, "history.html")));
+/* =========================
+   SERVE history.html
+========================= */
+app.get("/history", (req, res) => {
+  console.log("Serving history.html");
+  res.sendFile(path.join(__dirname, "history.html"));
+});
 
-// =========================
-// VERIFY PAYMENT & SAVE
-// =========================
-app.post("/verify-payment", async (req, res) => {
+/* =========================
+   FETCH PAYSTACK HISTORY
+========================= */
+app.get("/fetch-paystack", async (req, res) => {
   try {
-    const { email, amount, contract_id, milestone, reference } = req.body;
+    console.log("Fetching Paystack transaction history...");
 
-    if (!reference) return res.status(400).json({ error: "No reference provided" });
+    // 1️⃣ Get transactions from Paystack
+    const response = await axios.get("https://api.paystack.co/transaction", {
+      headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` }
+    });
 
-    console.log("Checking Paystack transaction:", reference);
+    const transactions = response.data.data; // array of transactions
+    console.log(`Fetched ${transactions.length} transactions`);
 
-    // Verify transaction via Paystack history
-    const paystackRes = await axios.get(
-      `https://api.paystack.co/transaction/verify/${reference}`,
-      {
-        headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` },
-      }
-    );
+    // 2️⃣ Insert each transaction into Supabase
+    for (const trx of transactions) {
+      const { reference, customer, amount, currency, status, metadata, id: paystack_id } = trx;
 
-    const trx = paystackRes.data.data;
-
-    // Only continue if transaction is completed
-    if (trx.status !== "success") {
-      console.log("Transaction failed or not completed:", trx.status);
-      return res.status(400).json({ error: "Transaction not successful" });
-    }
-
-    // Insert or update Supabase table
-    const { data, error } = await supabase.from("paystack").upsert(
-      [
-        {
-          reference_id: trx.reference,
-          email,
+      const { data, error } = await supabase
+        .from("paystack")
+        .upsert([{
+          reference,
+          reference_id: paystack_id,
+          email: customer?.email || null,
           amount,
-          contract_id,
-          milestone,
-          state: trx.status,
-        },
-      ],
-      { onConflict: ["reference_id"] }
-    );
+          currency,
+          status,
+          contract_id: metadata?.contract_id || null,
+          milestone_id: metadata?.milestone || null,
+          raw_event: trx
+        }], { onConflict: ["reference_id"] }); // avoid duplicates
 
-    if (error) {
-      console.error("Supabase insert error:", error);
-      return res.status(500).json({ error: error.message });
+      if (error) console.error("Supabase insert error:", error);
+      else console.log("Inserted transaction:", reference);
     }
 
-    console.log("Payment saved to Supabase ✅", data);
-    res.json({ success: true, transaction: trx });
+    res.json({ success: true, count: transactions.length });
   } catch (err) {
-    console.error("Server error during verification:", err.message);
-    res.status(500).json({ error: "Server error" });
+    console.error("Error fetching Paystack history:", err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
-// =========================
-// GET PAYMENT HISTORY
-// =========================
+/* =========================
+   GET ALL PAYMENTS (for history.html)
+========================= */
 app.get("/payments", async (req, res) => {
   try {
-    const { data, error } = await supabase.from("paystack").select("*").order("created_at", { ascending: false });
+    const { data, error } = await supabase
+      .from("paystack")
+      .select("*")
+      .order("created_at", { ascending: false });
+
     if (error) {
       console.error("Supabase fetch error:", error);
       return res.status(500).json({ error: error.message });
     }
+
     res.json(data);
   } catch (err) {
-    console.error("Server error fetching payments:", err.message);
-    res.status(500).json({ error: "Server error" });
+    console.error("Server error:", err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
-// =========================
-// PAYSTACK WEBHOOK (optional logging)
-// =========================
-app.post("/paystack-webhook", (req, res) => {
-  console.log("Webhook received:", JSON.stringify(req.body, null, 2));
-  res.sendStatus(200);
-});
-
-// =========================
-// START SERVER
-// =========================
+/* =========================
+   START SERVER
+========================= */
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
