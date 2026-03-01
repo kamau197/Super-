@@ -1,106 +1,80 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Payment History</title>
-<style>
-body {
-  margin: 0;
-  font-family: Arial, sans-serif;
-  display: flex;
-}
-
-/* Sidebar */
-.sidebar {
-  width: 200px;
-  background: #333;
-  color: #fff;
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  padding-top: 20px;
-}
-.sidebar a {
-  color: #fff;
-  padding: 15px 20px;
-  text-decoration: none;
-  display: block;
-}
-.sidebar a:hover {
-  background: #444;
-}
-
-/* Main content */
-.main {
-  flex: 1;
-  padding: 20px;
-}
-table {
-  border-collapse: collapse;
-  width: 100%;
-  margin-top: 20px;
-}
-th, td {
-  border: 1px solid #333;
-  padding: 8px;
-  text-align: left;
-}
-th {
-  background: #eee;
-}
-</style>
+  <title>Payment History</title>
+  <style>
+    body { font-family: Arial; margin:0; display:flex; }
+    /* Sidebar */
+    .sidebar {
+      width: 200px;
+      background: #0ba4db;
+      color: white;
+      height: 100vh;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    .sidebar a {
+      color: white;
+      display:block;
+      margin:10px 0;
+      text-decoration:none;
+    }
+    .content { flex:1; padding:30px; }
+    table { border-collapse: collapse; width:100%; }
+    th, td { border:1px solid #ddd; padding:8px; }
+    th { background:#0ba4db; color:white; }
+  </style>
 </head>
 <body>
 
 <div class="sidebar">
-  <a href="/pay.html">Pay</a>
-  <a href="/history.html">History</a>
+  <h3>Menu</h3>
+  <a href="pay.html">Pay Milestone</a>
+  <a href="history.html">Payment History</a>
 </div>
 
-<div class="main">
-  <h1>Payment History</h1>
+<div class="content">
+  <h3>Payment History (Audit)</h3>
+  <button onclick="refreshHistory()">Refresh</button>
   <table>
     <thead>
       <tr>
-        <th>Reference ID</th>
-        <th>Email</th>
+        <th>Reference</th>
+        <th>Contract</th>
+        <th>Milestone</th>
         <th>Amount</th>
-        <th>Contract ID</th>
-        <th>Milestone ID</th>
         <th>Status</th>
+        <th>Date</th>
       </tr>
     </thead>
-    <tbody id="history"></tbody>
+    <tbody id="tableBody"></tbody>
   </table>
 </div>
 
 <script>
-async function loadHistory() {
-  try {
-    const res = await fetch("/payments");
-    const data = await res.json();
-    const tbody = document.getElementById("history");
-    tbody.innerHTML = "";
+async function refreshHistory() {
+  const res = await fetch('/get-history');
+  const data = await res.json();
 
-    data.forEach(row => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${row.reference_id || "-"}</td>
-        <td>${row.email || "-"}</td>
-        <td>${row.amount || "-"}</td>
-        <td>${row.contract_id || "-"}</td>
-        <td>${row.milestone_id || "-"}</td>
-        <td>${row.state || "-"}</td>
-      `;
-      tbody.appendChild(tr);
-    });
-  } catch(err) {
-    console.error(err);
-  }
+  const body = document.getElementById("tableBody");
+  body.innerHTML = "";
+
+  data.forEach(p => {
+    body.innerHTML += `
+      <tr>
+        <td>${p.reference}</td>
+        <td>${p.contract_id || ''}</td>
+        <td>${p.milestone_id || ''}</td>
+        <td>${p.currency || 'KES'} ${p.amount}</td>
+        <td>${p.status}</td>
+        <td>${new Date(p.created_at).toLocaleString()}</td>
+      </tr>
+    `;
+  });
 }
 
-loadHistory();
+// Load immediately
+refreshHistory();
 </script>
 
 </body>
