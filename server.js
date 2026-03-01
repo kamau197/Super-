@@ -41,11 +41,82 @@ app.get("/health", (req, res) => {
 });
 
 /* =========================
+   VERIFY PAYMENT FROM FRONTEND + SAVE
+========================= */
+app.post("/verify-payment", async (req, res) => {
+  try {
+    const { reference, email, amount, contract_id, milestone, supremeId } = req.body;
+
+    if (supremeId !== SUPREME_ID) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+
+    if (!reference) {
+      return res.status(400).json({ error: "No reference provided" });
+    }
+
+    console.log("Verifying payment:", reference);
+
+    // Step 1: Verify with Paystack
+    const verify = await axios.get(
+      `https://api.paystack.co/transaction/verify/${reference}`,
+      {
+        headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` },
+      }
+    );
+
+    const paymentData = verify.data.data;
+
+    if (paymentData.status !== "success") {
+      return res.status(400).json({ error: "Payment not successful" });
+    }
+
+    const reference_id = paymentData.id.toString();
+
+    // Step 2: Insert into Supabase (if not already exists)
+    const { data: existing } = await supabase
+      .from("paystack")
+      .select("*")
+      .eq("reference_id", reference_id);
+
+    if (existing.length === 0) {
+      const { data, error } = await supabase.from("paystack").insert([
+        {
+          reference: paymentData.reference,
+          reference_id,
+          email: email || paymentData.customer.email,
+          amount: amount || paymentData.amount / 100,
+          contract_id: contract_id || paymentData.metadata?.contract_id || null,
+          milestone_id: milestone || paymentData.metadata?.milestone || null,
+          currency: paymentData.currency,
+          status: paymentData.status,
+          raw_event: paymentData,
+          created_at: paymentData.paid_at,
+        },
+      ]);
+
+      if (error) {
+        console.error("Supabase insert error:", error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      console.log("Payment saved to Supabase ✅", reference_id);
+    } else {
+      console.log("Payment already exists in Supabase:", reference_id);
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Error verifying payment:", err.message);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+/* =========================
    PULL PAYSTACK HISTORY TO SUPABASE
 ========================= */
 app.post("/fetch-paystack-history", async (req, res) => {
   try {
-    // You can optionally verify the supreme ID sent by client
     const { supremeId } = req.body;
     if (supremeId !== SUPREME_ID) {
       return res.status(403).json({ error: "Unauthorized" });
@@ -55,33 +126,32 @@ app.post("/fetch-paystack-history", async (req, res) => {
 
     const history = await axios.get("https://api.paystack.co/transaction", {
       headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` },
-      params: { perPage: 50 } // fetch last 50 transactions
+      params: { perPage: 50 },
     });
 
     const transactions = history.data.data;
 
     for (const trx of transactions) {
-      const reference_id = trx.id.toString(); // Paystack's unique transaction ID
+      const reference_id = trx.id.toString();
       const existing = await supabase
         .from("paystack")
         .select("*")
         .eq("reference_id", reference_id);
 
       if (existing.data.length === 0) {
-        // Insert new transaction into Supabase
         await supabase.from("paystack").insert([
           {
             reference: trx.reference,
             reference_id,
             email: trx.customer.email,
-            amount: trx.amount / 100, // convert kobo to NGN/KES
+            amount: trx.amount / 100,
             contract_id: trx.metadata?.contract_id || null,
             milestone_id: trx.metadata?.milestone || null,
             currency: trx.currency,
             status: trx.status,
             raw_event: trx,
-            created_at: trx.paid_at
-          }
+            created_at: trx.paid_at,
+          },
         ]);
         console.log("Inserted trx:", reference_id);
       }
