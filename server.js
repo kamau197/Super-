@@ -12,7 +12,6 @@ const PORT = process.env.PORT || 3000;
 ========================= */
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "client"))); // <- serve static files
 
 /* =========================
    SUPABASE CLIENT
@@ -23,41 +22,33 @@ const supabase = createClient(
 );
 
 /* =========================
-   ROUTES
+   HEALTH CHECK
 ========================= */
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "client", "pay.html"));
+app.get("/health", (req, res) => {
+  res.send("Server running with Supabase ✅");
 });
 
 /* =========================
-   HEALTH CHECK
+   SERVE FRONTEND (pay.html)
 ========================= */
-
 app.get("/", (req, res) => {
-  res.send("Server running with Supabase 🚀");
+  res.sendFile(path.join(__dirname, "pay.html"));
 });
 
 /* =========================
    VERIFY PAYMENT + SAVE
 ========================= */
-
 app.post("/verify-payment", async (req, res) => {
   try {
     console.log("Incoming payment:", req.body);
 
-    const {
-      reference,
-      email,
-      amount,
-      contract_id,
-      milestone
-    } = req.body;
+    const { reference, email, amount, contract_id, milestone } = req.body;
 
     if (!reference) {
       return res.status(400).json({ error: "No reference provided" });
     }
 
-    /* 🔥 VERIFY WITH PAYSTACK */
+    // 🔥 VERIFY PAYMENT WITH PAYSTACK
     const verify = await axios.get(
       `https://api.paystack.co/transaction/verify/${reference}`,
       {
@@ -73,16 +64,16 @@ app.post("/verify-payment", async (req, res) => {
       return res.status(400).json({ error: "Payment not successful" });
     }
 
-    /* 🔥 INSERT INTO SUPABASE TABLE 'paystack' */
+    // 🔥 INSERT INTO SUPABASE TABLE 'paystack'
     const { data, error } = await supabase
       .from("paystack")
       .insert([
         {
-          reference: reference,
-          email: email,
-          amount: amount,
-          contract_id: contract_id,
-          milestone: milestone,
+          reference,
+          email,
+          amount,
+          contract_id,
+          milestone,
           state: "completed"
         }
       ]);
@@ -93,11 +84,10 @@ app.post("/verify-payment", async (req, res) => {
     }
 
     console.log("Payment saved to Supabase ✅");
-
     res.json({ success: true });
 
-  } catch (error) {
-    console.error("Server error:", error.message);
+  } catch (err) {
+    console.error("Server error:", err.message);
     res.status(500).json({ error: "Server error" });
   }
 });
@@ -105,7 +95,6 @@ app.post("/verify-payment", async (req, res) => {
 /* =========================
    START SERVER
 ========================= */
-
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
